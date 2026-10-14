@@ -19,14 +19,15 @@ class MarketKalmanFilter:
         self.P = np.eye(2, dtype=np.float64) * (self.tick_size ** 2)
         self.initialized = True
 
-    def update(self, measured_price: float) -> tuple:
+    def update(self, measured_price: float, measurement_var: float = None) -> tuple:
         if not self.initialized:
             self.reset(measured_price)
             return measured_price, 0.0
         x_pred = self.A @ self.x
         P_pred = self.A @ self.P @ self.A.T + self.Q
         y = np.array([[measured_price]], dtype=np.float64) - (self.C @ x_pred)
-        S = self.C @ P_pred @ self.C.T + self.R
+        R = np.array([[measurement_var]], dtype=np.float64) if measurement_var is not None else self.R
+        S = self.C @ P_pred @ self.C.T + R
         K = P_pred @ self.C.T @ np.linalg.inv(S)
         self.x = x_pred + K @ y
         I = np.eye(2, dtype=np.float64)

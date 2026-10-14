@@ -25,7 +25,8 @@ def fetch_live_market_data(pair: str = 'BTC/USDT', timeframe: str = '15m', limit
         'obi': obi,
         'bid_ratio': bid_ratio,
         'best_bid': orderbook['bids'][0][0] if orderbook['bids'] else 0.0,
-        'best_ask': orderbook['asks'][0][0] if orderbook['asks'] else 0.0
+        'best_ask': orderbook['asks'][0][0] if orderbook['asks'] else 0.0,
+        'raw_orderbook': orderbook
     }
     
     return df, liquidity_data

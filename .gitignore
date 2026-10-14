@@ -48,6 +48,11 @@ secrets.json
 *.sublime-workspace
 .DS_Store
 
+# Live scratch tests
+live_test_1m.json
+run_live_1m.py
+
+
 # Pytest & Coverage
 .pytest_cache/
 .coverage
