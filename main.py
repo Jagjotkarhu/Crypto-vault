@@ -6,40 +6,51 @@ from core_math.fractional_diff import fractional_differentiation_ffd
 from risk_control.pid_sizer import DiscretePIDSizer, ExecutionState
 from config.settings import MAX_LEVERAGE, TRANCHE_MARGIN_INR, MAX_POSITION_NOTIONAL_INR
 
-def run_analysis(pair: str = 'BTC/USDT'):
-    print(f'Fetching live 15m data for {pair}...')
-    df = fetch_live_market_data(pair, timeframe='15m', limit=250)
+def run_analysis(pair='BTC/USDT'):
+    print('Fetching live 15m candles and order book for ' + str(pair) + '...')
+    df, liq = fetch_live_market_data(pair, timeframe='15m', limit=250)
     current_close = df['close'].iloc[-1]
     
-    # 1. Kalman Denoising
+    # 1. 200 EMA Macro Regime Filter
+    df['ema_200'] = df['close'].ewm(span=200, adjust=False).mean()
+    ema_200 = df['ema_200'].iloc[-1]
+    is_macro_bull = bool(current_close > ema_200)
+    regime_str = 'BULLISH (Above 200 EMA)' if is_macro_bull else 'BEARISH (Below 200 EMA)'
+    
+    # 2. Discrete Kalman Denoising
     kf = MarketKalmanFilter(dt=1.0, tick_size=0.01)
     for p in df['close']:
         fair_price, velocity = kf.update(p)
         
-    # 2. FracDiff (Memory + Stationarity)
+    # 3. FracDiff Stationary Momentum
     frac_series = fractional_differentiation_ffd(df['close'], d=0.38)
-    recent_momentum = float(frac_series.iloc[-1] - frac_series.iloc[0]) if len(frac_series) > 1 else 0.0
+    recent_mom = float(frac_series.iloc[-1] - frac_series.iloc[0]) if len(frac_series) > 1 else 0.0
     
-    # 3. Conviction mapping (Demo heuristic pending PyTorch model training)
-    conviction = 0.74 if velocity > 0 and recent_momentum > 0 else 0.40
+    # 4. Confluence Scoring
+    bull_score = int(velocity > 0) + int(recent_mom > 0) + int(liq['obi'] > 0.10) + int(is_macro_bull)
+    conviction = 0.35 + (bull_score * 0.12)
     
-    # 4. PID Position Sizing
+    # 5. Closed-Loop PID Sizing
     sizer = DiscretePIDSizer(Kp=0.6, Ki=0.15, Kd=0.05, max_leverage=MAX_LEVERAGE, tranche_inr=TRANCHE_MARGIN_INR)
     target_inr, state = sizer.compute(target_conviction=conviction, current_exposure_inr=0.0)
     
-    print('========================================================')
-    print(f'[*] LIVE ANALYSIS BRIEF: {pair}')
-    print(f'- Market Raw Close:     ')
-    print(f'- Kalman Denoised Fair:   (Velocity: {velocity:+.4f})')
-    print(f'- FracDiff (d=0.38):     {recent_momentum:+.4f} (Stationary Momentum)')
-    print(f'- Model Conviction:     {conviction*100:.1f}%')
-    print('--------------------------------------------------------')
-    print(f'[CONFIG] CLOSED-LOOP PID POSITION SIZING:')
-    print(f'- Target Sizing (INR):   INR {target_inr:,.2f} / INR {MAX_POSITION_NOTIONAL_INR:,.2f} Max Cap')
-    print(f'- Effective Leverage:    {abs(target_inr)/TRANCHE_MARGIN_INR:.2f}x (Clamped at {MAX_LEVERAGE}x)')
-    print(f'- Execution State:       {state.value}')
-    print('========================================================')
+    print('==================================================================')
+    print('[*] LIVE DAY-TRADE INTELLIGENCE BRIEF: ' + str(pair))
+    print('------------------------------------------------------------------')
+    print('- Market Raw Price:      $' + format(current_close, ',.2f'))
+    print('- Kalman Denoised Fair:   $' + format(fair_price, ',.2f') + ' (Velocity: ' + format(velocity, '+.4f') + ')')
+    print('- 200 EMA Macro Filter:   $' + format(ema_200, ',.2f') + ' -> ' + regime_str)
+    print('- Order Book Liquidity:   ' + format(liq['bid_ratio'], '.1f') + '% Bids vs ' + format(100.0 - liq['bid_ratio'], '.1f') + '% Asks (OBI: ' + format(liq['obi'], '+.3f') + ')')
+    print('- FracDiff Stationary:    ' + format(recent_mom, '+.4f'))
+    print('- Multi-Factor Conviction: ' + format(conviction * 100.0, '.1f') + '% (Confluence: ' + str(bull_score) + '/4 factors aligned)')
+    print('------------------------------------------------------------------')
+    print('[CONFIG] CLOSED-LOOP PID POSITION SIZING AND RISK PLAN:')
+    print('- Allocated Capital:      INR ' + format(target_inr, ',.2f') + ' (Max Cap: INR ' + format(MAX_POSITION_NOTIONAL_INR, ',.2f') + ')')
+    print('- Recommended Leverage:   ' + format(abs(target_inr) / TRANCHE_MARGIN_INR, '.2f') + 'x (Hard Limit: ' + str(MAX_LEVERAGE) + 'x)')
+    print('- Risk Per Trade (1.5%):  INR ' + format(abs(target_inr) * 0.015, ',.2f'))
+    print('- Execution State:        ' + str(state.value))
+    print('==================================================================')
 
 if __name__ == '__main__':
-    pair = sys.argv[1] if len(sys.argv) > 1 else 'BTC/USDT'
-    run_analysis(pair)
+    p_arg = sys.argv[1] if len(sys.argv) > 1 else 'BTC/USDT'
+    run_analysis(p_arg)
