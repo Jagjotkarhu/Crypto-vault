@@ -1,0 +1,8 @@
+ccxt>=4.5.87
+supabase>=2.32.0
+numpy>=1.26.0
+pandas>=2.2.0
+scipy>=1.12.0
+torch>=2.2.0
+pytest>=8.0.0
+statsmodels>=0.14.0

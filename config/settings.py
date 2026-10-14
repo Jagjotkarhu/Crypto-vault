@@ -1,0 +1,13 @@
+# Core Configuration for Crypto-Vault
+
+SUPABASE_URL = 'https://buctapkmengzlijcmeyg.supabase.co'
+SUPABASE_KEY = 'sb_secret_OhgvOzBIXsNNvCe7bwsQiA_EaFctYTv'
+
+# Risk Boundaries
+TOTAL_CAPITAL_INR = 5000.0
+TRANCHE_MARGIN_INR = 500.0
+MAX_LEVERAGE = 5.0
+MAX_POSITION_NOTIONAL_INR = TRANCHE_MARGIN_INR * MAX_LEVERAGE  # 2,500 INR
+
+DEFAULT_TIMEFRAME = '15m'
+DEFAULT_PAIRS = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT']
