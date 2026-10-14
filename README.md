@@ -59,6 +59,28 @@ Instead of heuristic indicators or static percentage betting, Crypto-Vault model
 
 ---
 
+---
+
+## ⚡ Digital Signal Processing (DSP) & DSD Principles
+
+To bridge ECE hardware theory with high-frequency quantitative computing, the mathematical core adopts 3 digital systems invariants:
+
+1. **Windowed Linear-Phase FIR Topology (core_math/fractional_diff.py)**:
+   - Fractional differentiation weights are truncated via an expanding/fixed-window **FIR filter** with a weight threshold (e.g.,  < 10^{-4}$).
+   - **Guarantees zero phase distortion**, ensuring filtered momentum peaks and troughs remain strictly synchronized with raw real-time price discovery.
+
+2. **Quantization Noise Modeling (core_math/kalman.py)**:
+   - Models market microstructure orderbook granularity as an **ADC quantization error floor**:
+     \sigma_{quant}^2 = \frac{\Delta^2}{12}
+     where $\Delta$ is the minimum asset tick size.
+   - Automatically tunes the Kalman measurement covariance matrix ($) dynamically per asset without manual guesswork.
+
+3. **Deterministic Execution FSM (
+isk_control/pid_sizer.py)**:
+   - Capital allocation transitions through a formal **Moore/Mealy Finite State Machine**:
+     IDLE $\to$ ARMED $\to$ IN_POSITION $\to$ ANTI_WINDUP_CLAMPED $\to$ EMERGENCY_DAMP.
+   - Rejects illegal state jumps, double-order execution, or race conditions during rapid volatility regime shifts.
+
 ## ⚙️ Configuration & Risk Controls
 
 * **Primary Assets**: BTC/USDT, ETH/USDT, SOL/USDT
