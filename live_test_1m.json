@@ -1,0 +1,33 @@
+{
+  "timestamp_utc": "2026-10-14T16:10:46.592149+00:00",
+  "candle_timestamp_ms": 1791994200000,
+  "candle_datetime_utc": "2026-10-14 16:10:00",
+  "target_check_time_utc": "2026-10-14T16:15:46.592149+00:00",
+  "pair": "BTC/USDT",
+  "timeframe": "1m",
+  "baseline_price": 81719.39,
+  "kalman_fair_price": 81724.45,
+  "kalman_velocity": -41.3585,
+  "ema_200": 82185.55,
+  "macro_regime": "BEARISH (Below 200 EMA)",
+  "orderbook": {
+    "obi": -0.9336,
+    "bid_ratio_pct": 3.32,
+    "bid_volume": 0.4878,
+    "ask_volume": 14.2086,
+    "best_bid": 81719.39,
+    "best_ask": 81719.4
+  },
+  "stationary_momentum": -170.209999,
+  "bull_confluence_score": "0/4",
+  "conviction_pct": 35.0,
+  "directional_prediction": "BEARISH (DOWN)",
+  "pid_position_inr": 700.0,
+  "recommended_leverage": 1.4,
+  "factors": {
+    "kalman_velocity_positive": false,
+    "stationary_momentum_positive": false,
+    "obi_buy_pressure": false,
+    "above_200_ema": false
+  }
+}
