@@ -125,6 +125,8 @@ python main.py --pair BTC/USDT --timeframe 15m
 1. ✅ **Paper-Trading Simulated Ledger (`execution/paper_ledger.py`):** Local state machine tracking simulated executions, fills, slippage, and cumulative PnL over time without real capital risk.
 2. ✅ **Persistent WebSocket Data Ingestion (`data/ws_streamer.py`):** Replaced polling with continuous Binance WebSocket orderbook feeds to handle microstructure flash wicks with sub-20ms latency.
 3. ✅ **Volatility-Adaptive Trailing Stop-Loss (`risk_control/adaptive_stops.py`):** Linked closed-loop PID error, spread, and dynamic Kalman covariance directly to automated trailing stop-loss triggers.
+4. ✅ **Institutional Order Block Engine (`core_math/order_blocks.py`):** Quantitative displacement detector isolating unmitigated institutional zones with Kalman zero-crossing turning points and 1:3 R:R setups.
+5. ✅ **Volumetric Order Flow Suite (`core_math/flow_indicators.py`):** Real-time Cumulative Volume Delta (CVD), institutional limit absorption divergence detection, and 50-bar Anchored VWAP with $\pm 1\sigma, \pm 2\sigma$ statistical bands.
 
 ### 4. Autonomous Paper Trading Bot
 Run the continuous live execution loop:
