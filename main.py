@@ -7,7 +7,9 @@ from core_math.flow_indicators import FlowIndicators
 from core_math.order_blocks import OrderBlockDetector
 from risk_control.pid_sizer import DiscretePIDSizer, ExecutionState
 from data.cleaner import MicrostructureCleaner
-from config.settings import MAX_LEVERAGE, TRANCHE_MARGIN_INR, MAX_POSITION_NOTIONAL_INR
+from risk_control.scoring import score_factors, size_for_risk
+from config.settings import (MAX_LEVERAGE, TRANCHE_MARGIN_INR, MAX_POSITION_NOTIONAL_INR,
+                             TOTAL_CAPITAL_INR, RISK_PER_TRADE_PCT, MIN_EXCHANGE_NOTIONAL_INR)
 
 
 def run_analysis(pair='BTC/USDT'):
@@ -53,31 +55,34 @@ def run_analysis(pair='BTC/USDT'):
     flow_bull = bool(current_close >= flow['avwap'])
     cvd_bull_div = bool(flow['divergence'].get('has_divergence') and flow['divergence'].get('type') == 'BULLISH_ABSORPTION')
     
-    bull_score = (
-        int(velocity > 0) +
-        int(recent_mom > 0) +
-        int(weighted_obi > 0.08) +
-        int(is_macro_bull) +
-        int(flow_bull) +
-        int(cvd_bull_div or (reversal_setup is not None and reversal_setup['signal'] == 'BULLISH_REVERSAL'))
-    )
-    conviction = 0.30 + (bull_score * 0.11)
-    
-    # Clear Direction Resolution
-    if bull_score >= 4:
-        direction_str = "BULLISH (UP)"
-    elif bull_score <= 2:
-        direction_str = "BEARISH (DOWN)"
-    else:
-        direction_str = "BULLISH (UP)" if velocity > 0 else "BEARISH (DOWN)"
-    
+    cvd_vote = 1 if cvd_bull_div else (-1 if (flow['divergence'].get('has_divergence') and flow['divergence'].get('type') == 'BEARISH_ABSORPTION') else 0)
+    reversal_vote = 0
+    if reversal_setup is not None:
+        reversal_vote = 1 if reversal_setup['signal'] == 'BULLISH_REVERSAL' else (-1 if reversal_setup['signal'] == 'BEARISH_REVERSAL' else 0)
+    score = score_factors(velocity, recent_mom, weighted_obi, is_macro_bull, flow_bull, cvd_vote, reversal_vote)
+    conviction = score.conviction
+    direction_str = {'BULLISH': 'BULLISH (UP)', 'BEARISH': 'BEARISH (DOWN)', 'NEUTRAL': 'NEUTRAL (NO EDGE)'}[score.direction]
+
     # 7. Closed-Loop PID Sizing
     sizer = DiscretePIDSizer(Kp=0.6, Ki=0.15, Kd=0.05, max_leverage=MAX_LEVERAGE, tranche_inr=TRANCHE_MARGIN_INR)
     target_inr, state = sizer.compute(target_conviction=conviction, current_exposure_inr=0.0)
+
+    # Equity-based risk cap: notional * stop_distance <= 1.5% of ACCOUNT EQUITY
+    atr14 = float((df['high'].iloc[-14:] - df['low'].iloc[-14:]).mean())
+    if reversal_setup is not None:
+        stop_price = float(reversal_setup['stop_loss'])
+    else:
+        stop_price = current_close + (1.5 * atr14 if score.direction == 'BEARISH' else -1.5 * atr14)
+    sizing = size_for_risk(target_inr, current_close, stop_price, TOTAL_CAPITAL_INR,
+                           RISK_PER_TRADE_PCT, MAX_POSITION_NOTIONAL_INR, MIN_EXCHANGE_NOTIONAL_INR)
+    if score.direction == 'NEUTRAL':
+        sizing.notional_inr = 0.0
+        sizing.risk_inr = 0.0
     
     print('==================================================================')
     print('[*] LIVE QUANTITATIVE INTELLIGENCE BRIEF: ' + str(pair))
     print('------------------------------------------------------------------')
+    print('- Data As Of (UTC):      ' + str(df['datetime'].iloc[-1]) + ' (last 15m candle open)')
     print('- Market Raw Price:      $' + format(current_close, ',.2f'))
     print('- Kalman Denoised Fair:   $' + format(fair_price, ',.2f') + ' (Velocity: ' + format(velocity, '+.4f') + ', Dyn R_v: ' + format(dyn_rv, '.2e') + ')')
     print('- 200 EMA Macro Filter:   $' + format(ema_200, ',.2f') + ' -> ' + regime_str)
@@ -102,13 +107,20 @@ def run_analysis(pair='BTC/USDT'):
     print('------------------------------------------------------------------')
     print('[DECISION] DIRECTIONAL SYNTHESIS & CONFLUENCE:')
     print('- Forecasted Direction:   ' + direction_str)
-    print('- Multi-Factor Score:     ' + str(bull_score) + '/6 factors aligned (Conviction: ' + format(conviction * 100.0, '.1f') + '%)')
+    print('- Factor Votes:           ' + str(score.bear) + ' bearish / ' + str(score.bull) + ' bullish / ' + str(score.neutral) + ' neutral (of ' + str(score.total) + ')')
+    for f in score.factors:
+        print('  * ' + f.name.ljust(30) + ('BULLISH' if f.vote > 0 else 'BEARISH' if f.vote < 0 else 'NEUTRAL'))
+    print('- Signal Strength:        ' + format(conviction * 100.0, '.1f') + '% (uncalibrated vote margin, not a win probability)')
     print('------------------------------------------------------------------')
     print('[CONFIG] CLOSED-LOOP PID POSITION SIZING AND RISK PLAN:')
-    print('- Allocated Capital:      INR ' + format(target_inr, ',.2f') + ' (Max Cap: INR ' + format(MAX_POSITION_NOTIONAL_INR, ',.2f') + ')')
-    print('- Recommended Leverage:   ' + format(abs(target_inr) / TRANCHE_MARGIN_INR, '.2f') + 'x (Hard Limit: ' + str(MAX_LEVERAGE) + 'x)')
-    print('- Risk Per Trade (1.5%):  INR ' + format(abs(target_inr) * 0.015, ',.2f'))
-    print('- Execution State:        ' + str(state.value))
+    print('- PID Target Notional:    INR ' + format(abs(target_inr), ',.2f') + ' (Max Cap: INR ' + format(MAX_POSITION_NOTIONAL_INR, ',.2f') + ')')
+    print('- Risk-Capped Notional:   INR ' + format(sizing.notional_inr, ',.2f') + ' (limit set by: ' + sizing.binding + ')')
+    print('- Recommended Leverage:   ' + format(sizing.notional_inr / TRANCHE_MARGIN_INR, '.2f') + 'x (Hard Limit: ' + str(MAX_LEVERAGE) + 'x)')
+    print('- Stop Distance:          ' + format(sizing.stop_pct * 100.0, '.2f') + '% (stop $' + format(stop_price, ',.2f') + ')')
+    print('- Risk Per Trade:         INR ' + format(sizing.risk_inr, ',.2f') + ' of INR ' + format(sizing.risk_budget_inr, ',.2f') + ' budget (' + format(RISK_PER_TRADE_PCT * 100.0, '.1f') + '% of INR ' + format(TOTAL_CAPITAL_INR, ',.0f') + ' equity)')
+    if sizing.below_min_notional and sizing.notional_inr > 0:
+        print('- [!] WARNING:            Notional below exchange minimum (INR ' + format(MIN_EXCHANGE_NOTIONAL_INR, ',.0f') + '); order would be rejected.')
+    print('- Execution State:        IDLE (analysis only; no position is assumed. Sizer internal state: ' + str(state.value) + ')')
     print('==================================================================')
 
 
